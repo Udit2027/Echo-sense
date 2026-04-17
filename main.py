@@ -1,5 +1,5 @@
 """
-AcoustiTrack Pro - Acoustic Distance Measurement System
+Echo-sense - Acoustic Distance Measurement System
 Clean and professional interface
 """
 
@@ -297,12 +297,12 @@ class AudioProcessor(QThread):
 
 # ==================== MAIN APPLICATION ====================
 
-class AcoustiTrackPro(QMainWindow):
+class EchoSense(QMainWindow):
     """Main application"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AcoustiTrack Pro - Acoustic Distance Measurement")
+        self.setWindowTitle("Echo-sense - Acoustic Distance Measurement")
         self.setGeometry(100, 100, 1400, 850)
         
         self.distance_calc = DistanceCalculator()
@@ -329,7 +329,7 @@ class AcoustiTrackPro(QMainWindow):
         main_layout.setContentsMargins(20, 20, 20, 20)
         
         # Header
-        header = QLabel("AcoustiTrack Pro")
+        header = QLabel("Echo-sense")
         header.setStyleSheet("""
             QLabel {
                 font-size: 28px;
@@ -912,7 +912,7 @@ class AcoustiTrackPro(QMainWindow):
             distances = list(self.distance_history)
             
             with open(filename, 'w') as f:
-                f.write("ACOUSTITRACK PRO - MEASUREMENT REPORT\n")
+                f.write("ECHO-SENSE - MEASUREMENT REPORT\n")
                 f.write("=" * 60 + "\n\n")
                 f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write(f"Calibrations: {len(self.distance_calc.calibration_points)}\n")
@@ -948,11 +948,11 @@ def main():
     app.setStyle('Fusion')
     
     print("=" * 60)
-    print("AcoustiTrack Pro - Acoustic Distance Measurement")
+    print("Echo-sense - Acoustic Distance Measurement")
     print("=" * 60)
     print("Starting application...\n")
     
-    window = AcoustiTrackPro()
+    window = EchoSense()
     window.show()
     
     sys.exit(app.exec_())
