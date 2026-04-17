@@ -8,9 +8,6 @@ import numpy as np
 import sounddevice as sd
 from scipy.signal import butter, filtfilt
 from scipy.fft import fft, fftfreq
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -19,6 +16,116 @@ import time
 import json
 from datetime import datetime
 from collections import deque
+
+
+class LivePlotWidget(QWidget):
+    """Small Qt-native plot widget used to avoid Matplotlib Qt backend crashes."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(500)
+        self.series = [
+            {
+                'title': 'Distance Over Time',
+                'ylabel': 'Distance (m)',
+                'color': QColor('#2563eb'),
+                'values': []
+            },
+            {
+                'title': 'Confidence Level',
+                'ylabel': 'Confidence (%)',
+                'color': QColor('#16a34a'),
+                'values': [],
+                'fixed_range': (0, 105)
+            },
+            {
+                'title': 'Sound Intensity',
+                'ylabel': 'Intensity (dB)',
+                'color': QColor('#dc2626'),
+                'values': []
+            }
+        ]
+        self.times = []
+    
+    def set_data(self, times, distances, confidences, intensities):
+        self.times = list(times)
+        values = [distances, confidences, intensities]
+        for item, data in zip(self.series, values):
+            item['values'] = list(data)
+        self.update()
+    
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor('white'))
+        
+        margin_left = 62
+        margin_right = 20
+        margin_top = 18
+        margin_bottom = 32
+        gap = 18
+        plot_count = len(self.series)
+        plot_height = max(90, (self.height() - margin_top - margin_bottom - gap * (plot_count - 1)) // plot_count)
+        
+        for index, item in enumerate(self.series):
+            top = margin_top + index * (plot_height + gap)
+            rect = QRect(margin_left, top, self.width() - margin_left - margin_right, plot_height)
+            self._draw_plot(painter, rect, item)
+    
+    def _draw_plot(self, painter, rect, item):
+        painter.setPen(QPen(QColor('#d1d5db'), 1))
+        painter.setBrush(QColor('#f8f9fa'))
+        painter.drawRect(rect)
+        
+        painter.setPen(QPen(QColor('#111827'), 1))
+        title_font = QFont(self.font())
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.drawText(rect.adjusted(0, -18, 0, 0), Qt.AlignTop | Qt.AlignHCenter, item['title'])
+        
+        painter.setFont(self.font())
+        painter.setPen(QPen(QColor('#4b5563'), 1))
+        painter.drawText(6, rect.center().y() + 5, item['ylabel'])
+        painter.drawText(rect.left(), rect.bottom() + 18, 'Time (s)')
+        
+        for step in range(1, 4):
+            y = rect.top() + step * rect.height() // 4
+            painter.setPen(QPen(QColor('#e5e7eb'), 1))
+            painter.drawLine(rect.left(), y, rect.right(), y)
+        
+        values = item['values']
+        if len(values) < 2 or len(self.times) < 2:
+            painter.setPen(QPen(QColor('#6b7280'), 1))
+            painter.drawText(rect, Qt.AlignCenter, 'Waiting for measurement data')
+            return
+        
+        min_time = min(self.times)
+        max_time = max(self.times)
+        if max_time <= min_time:
+            max_time = min_time + 1
+        
+        if 'fixed_range' in item:
+            min_value, max_value = item['fixed_range']
+        else:
+            min_value = min(values)
+            max_value = max(values)
+            if max_value <= min_value:
+                max_value = min_value + 1
+            padding = (max_value - min_value) * 0.1
+            min_value -= padding
+            max_value += padding
+        
+        points = []
+        for t, value in zip(self.times, values):
+            x_ratio = (t - min_time) / (max_time - min_time)
+            y_ratio = (value - min_value) / (max_value - min_value)
+            x = rect.left() + x_ratio * rect.width()
+            y = rect.bottom() - y_ratio * rect.height()
+            points.append(QPointF(x, y))
+        
+        painter.setPen(QPen(item['color'], 2))
+        for start, end in zip(points, points[1:]):
+            painter.drawLine(start, end)
 
 
 # ==================== DISTANCE CALCULATOR ====================
@@ -421,36 +528,8 @@ class AcoustiTrackPro(QMainWindow):
         group = QGroupBox("Live Graphs")
         layout = QVBoxLayout(group)
         
-        self.fig = Figure(figsize=(10, 7), facecolor='white')
-        self.canvas = FigureCanvas(self.fig)
+        self.canvas = LivePlotWidget()
         layout.addWidget(self.canvas)
-        
-        self.ax1 = self.fig.add_subplot(311)
-        self.ax2 = self.fig.add_subplot(312)
-        self.ax3 = self.fig.add_subplot(313)
-        
-        self.fig.tight_layout(pad=2.5)
-        
-        # Style plots
-        for ax in [self.ax1, self.ax2, self.ax3]:
-            ax.set_facecolor('#f8f9fa')
-            ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-        
-        self.line_distance, = self.ax1.plot([], [], 'b-', linewidth=2)
-        self.ax1.set_title('Distance Over Time', fontweight='bold', fontsize=11)
-        self.ax1.set_ylabel('Distance (m)')
-        self.ax1.set_xlabel('Time (s)')
-        
-        self.line_confidence, = self.ax2.plot([], [], 'g-', linewidth=2)
-        self.ax2.set_title('Confidence Level', fontweight='bold', fontsize=11)
-        self.ax2.set_ylabel('Confidence (%)')
-        self.ax2.set_xlabel('Time (s)')
-        self.ax2.set_ylim([0, 105])
-        
-        self.line_intensity, = self.ax3.plot([], [], 'r-', linewidth=2)
-        self.ax3.set_title('Sound Intensity', fontweight='bold', fontsize=11)
-        self.ax3.set_ylabel('Intensity (dB)')
-        self.ax3.set_xlabel('Time (s)')
         
         return group
     
@@ -797,19 +876,7 @@ class AcoustiTrackPro(QMainWindow):
             confidences = list(self.confidence_history)
             intensities = list(self.intensity_history)
             
-            self.line_distance.set_data(times, distances)
-            self.ax1.relim()
-            self.ax1.autoscale_view()
-            
-            self.line_confidence.set_data(times, confidences)
-            self.ax2.relim()
-            self.ax2.autoscale_view()
-            
-            self.line_intensity.set_data(times, intensities)
-            self.ax3.relim()
-            self.ax3.autoscale_view()
-            
-            self.canvas.draw()
+            self.canvas.set_data(times, distances, confidences, intensities)
     
     def save_data(self):
         """Save data"""
